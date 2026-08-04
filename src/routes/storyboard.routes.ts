@@ -84,6 +84,7 @@ storyboardRouter.get("/:id", async (req, res) => {
 // - kalau kosong: storyboard berdiri sendiri (standalone), tidak terikat draft
 storyboardRouter.post("/", async (req, res) => {
   const { contentId, title } = req.body ?? {};
+  let resolvedTitle = title || null;
 
   if (contentId) {
     const content = await db.query.contents.findFirst({
@@ -99,18 +100,49 @@ storyboardRouter.post("/", async (req, res) => {
     if (existing) {
       return res.json(existing);
     }
+
+    // storyboard terikat draft otomatis pakai judul draft-nya
+    resolvedTitle = content.title;
   }
 
   const [created] = await db
     .insert(storyboards)
     .values({
       contentId: contentId || null,
-      title: title || null,
+      title: resolvedTitle,
       createdBy: req.user!.userId,
     })
     .returning();
 
   res.status(201).json(created);
+});
+
+// DELETE /storyboard/:id — hapus storyboard permanen beserta semua scene-nya
+// (file sketsa milik template TIDAK ikut terhapus dari Drive, hanya file sketsa manual)
+storyboardRouter.delete("/:id", async (req, res) => {
+  const scenes = await db
+    .select()
+    .from(storyboardScenes)
+    .where(eq(storyboardScenes.storyboardId, req.params.id));
+
+  for (const scene of scenes) {
+    if (scene.sketchImageGdriveId) {
+      const isTemplateFile = await db.query.storyboardSketchTemplates.findFirst({
+        where: eq(storyboardSketchTemplates.gdriveFileId, scene.sketchImageGdriveId),
+      });
+      if (!isTemplateFile) {
+        await gdrive.deleteFile(scene.sketchImageGdriveId).catch(() => {});
+      }
+    }
+  }
+
+  const deleted = await db.delete(storyboards).where(eq(storyboards.id, req.params.id)).returning();
+
+  if (deleted.length === 0) {
+    return res.status(404).json({ message: "Storyboard tidak ditemukan" });
+  }
+
+  res.json({ message: "Storyboard dihapus permanen" });
 });
 
 // PATCH /storyboard/:id — ubah judul storyboard
@@ -132,7 +164,7 @@ storyboardRouter.patch("/:id", async (req, res) => {
 
 // POST /storyboard/:id/scenes — tambah scene baru (urutan otomatis di akhir)
 storyboardRouter.post("/:id/scenes", async (req, res) => {
-  const { description, durationSeconds, sketchImageGdriveId } = req.body ?? {};
+  const { description, dialogue, durationSeconds, sketchImageGdriveId } = req.body ?? {};
 
   const storyboard = await db.query.storyboards.findFirst({
     where: eq(storyboards.id, req.params.id),
@@ -157,6 +189,7 @@ storyboardRouter.post("/:id/scenes", async (req, res) => {
       storyboardId: req.params.id,
       sceneOrder: nextOrder,
       description: description || null,
+      dialogue: dialogue || null,
       durationSeconds: durationSeconds ?? 0,
       sketchImageGdriveId: sketchImageGdriveId || null,
     })
@@ -167,12 +200,13 @@ storyboardRouter.post("/:id/scenes", async (req, res) => {
 
 // PATCH /storyboard/scenes/:sceneId — ubah deskripsi/durasi/sketsa scene
 storyboardRouter.patch("/scenes/:sceneId", async (req, res) => {
-  const { description, durationSeconds, sketchImageGdriveId } = req.body ?? {};
+  const { description, dialogue, durationSeconds, sketchImageGdriveId } = req.body ?? {};
 
   const [updated] = await db
     .update(storyboardScenes)
     .set({
       ...(description !== undefined ? { description } : {}),
+      ...(dialogue !== undefined ? { dialogue } : {}),
       ...(durationSeconds !== undefined ? { durationSeconds } : {}),
       ...(sketchImageGdriveId !== undefined ? { sketchImageGdriveId } : {}),
     })
@@ -281,7 +315,7 @@ storyboardRouter.post(
 
     const [updated] = await db
       .update(storyboardScenes)
-      .set({ sketchImageGdriveId: gdriveFileId })
+      .set({ sketchImageGdriveId: gdriveFileId, sketchLabel: null })
       .where(eq(storyboardScenes.id, scene.id))
       .returning();
 
@@ -437,7 +471,7 @@ storyboardRouter.post("/scenes/:sceneId/apply-template", async (req, res) => {
 
   const [updated] = await db
     .update(storyboardScenes)
-    .set({ sketchImageGdriveId: template.gdriveFileId })
+    .set({ sketchImageGdriveId: template.gdriveFileId, sketchLabel: template.name })
     .where(eq(storyboardScenes.id, scene.id))
     .returning();
 

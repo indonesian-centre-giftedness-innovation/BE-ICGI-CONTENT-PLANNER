@@ -16,15 +16,13 @@ contentRouter.use(authMiddleware);
  *  - search: cari di title
  *  - platform: instagram | website | dll (exact match, case-insensitive)
  *  - pillar: edukasi | hiburan | promosi
- *  - funnel: tofu | mofu | bofu
  */
 contentRouter.get("/", async (req, res) => {
-  const { status, search, platform, pillar, funnel } = req.query as {
+  const { status, search, platform, pillar } = req.query as {
     status?: string;
     search?: string;
     platform?: string;
     pillar?: string;
-    funnel?: string;
   };
 
   const conditions = [];
@@ -39,9 +37,6 @@ contentRouter.get("/", async (req, res) => {
   }
   if (pillar) {
     conditions.push(eq(contents.pillar, pillar as any));
-  }
-  if (funnel) {
-    conditions.push(eq(contents.funnel, funnel as any));
   }
 
   const rows = await db.query.contents.findMany({
@@ -75,7 +70,7 @@ contentRouter.get("/:id", async (req, res) => {
 
 // POST /content — buat draft baru
 contentRouter.post("/", async (req, res) => {
-  const { title, bodyDraft, platform, pillar, funnel } = req.body ?? {};
+  const { title, bodyDraft, platform, pillar } = req.body ?? {};
 
   if (!title || !String(title).trim()) {
     return res.status(400).json({ message: "Judul wajib diisi" });
@@ -90,7 +85,6 @@ contentRouter.post("/", async (req, res) => {
       bodyDraft: bodyDraft ?? null,
       platform: platform ?? null,
       pillar: pillar || null,
-      funnel: funnel || null,
       status: "draft",
       requiresApproval,
       createdBy: req.user!.userId,
@@ -100,7 +94,7 @@ contentRouter.post("/", async (req, res) => {
   res.status(201).json(created);
 });
 
-// PATCH /content/:id — update draft/judul/platform/pillar/funnel/status
+// PATCH /content/:id — update draft/judul/platform/pillar/status
 contentRouter.patch("/:id", async (req, res) => {
   const existing = await db.query.contents.findFirst({
     where: eq(contents.id, req.params.id),
@@ -117,7 +111,7 @@ contentRouter.patch("/:id", async (req, res) => {
     return res.status(403).json({ message: "Tidak punya akses mengubah konten ini" });
   }
 
-  const { title, bodyDraft, platform, pillar, funnel, status } = req.body ?? {};
+  const { title, bodyDraft, platform, pillar, status } = req.body ?? {};
 
   // hanya lead_admin yang boleh set status secara bebas
   // (alur approve/revisi formal nanti lewat endpoint /approval)
@@ -132,7 +126,6 @@ contentRouter.patch("/:id", async (req, res) => {
       ...(bodyDraft !== undefined ? { bodyDraft } : {}),
       ...(platform !== undefined ? { platform } : {}),
       ...(pillar !== undefined ? { pillar: pillar || null } : {}),
-      ...(funnel !== undefined ? { funnel: funnel || null } : {}),
       ...(status !== undefined ? { status } : {}),
       updatedAt: new Date(),
     })

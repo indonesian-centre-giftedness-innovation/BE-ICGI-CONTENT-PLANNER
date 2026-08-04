@@ -23,7 +23,6 @@ const PILLAR_LABEL: Record<string, string> = {
   hiburan: "Hiburan",
   promosi: "Promosi",
 };
-const FUNNEL_LABEL: Record<string, string> = { tofu: "TOFU", mofu: "MOFU", bofu: "BOFU" };
 
 function fmtDate(d: Date | string) {
   return new Date(d).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
@@ -47,7 +46,6 @@ exportRouter.get("/content.xlsx", async (_req, res) => {
     { header: "Judul", key: "title", width: 34 },
     { header: "Platform", key: "platform", width: 14 },
     { header: "Pillar", key: "pillar", width: 12 },
-    { header: "Funnel", key: "funnel", width: 10 },
     { header: "Status", key: "status", width: 18 },
     { header: "Penulis", key: "author", width: 20 },
     { header: "Dibuat", key: "createdAt", width: 14 },
@@ -71,7 +69,6 @@ exportRouter.get("/content.xlsx", async (_req, res) => {
       title: c.title,
       platform: c.platform || "-",
       pillar: c.pillar ? PILLAR_LABEL[c.pillar] : "-",
-      funnel: c.funnel ? FUNNEL_LABEL[c.funnel] : "-",
       status: STATUS_LABEL[c.status] || c.status,
       author: c.author?.name || "-",
       createdAt: fmtDate(c.createdAt),
@@ -119,7 +116,6 @@ exportRouter.get("/content.pdf", async (_req, res) => {
     { key: "title", label: "Judul", width: 210 },
     { key: "platform", label: "Platform", width: 90 },
     { key: "pillar", label: "Pillar", width: 75 },
-    { key: "funnel", label: "Funnel", width: 60 },
     { key: "status", label: "Status", width: 105 },
     { key: "author", label: "Penulis", width: 110 },
     { key: "updatedAt", label: "Diperbarui", width: 90 },
@@ -160,7 +156,6 @@ exportRouter.get("/content.pdf", async (_req, res) => {
       title: c.title,
       platform: c.platform || "-",
       pillar: c.pillar ? PILLAR_LABEL[c.pillar] : "-",
-      funnel: c.funnel ? FUNNEL_LABEL[c.funnel] : "-",
       status: STATUS_LABEL[c.status] || c.status,
       author: c.author?.name || "-",
       updatedAt: fmtDate(c.updatedAt),
@@ -267,12 +262,13 @@ exportRouter.get("/storyboard/:id/pdf", async (req, res) => {
     x += colCuts;
     doc.moveTo(x, y).lineTo(x, y + rowH).strokeColor("#000").stroke();
 
-    // PICTURE — embed gambar sketsa kalau ada
+    // PICTURE — embed gambar sketsa kalau ada, plus caption nama/angle shoot di bawahnya
+    const captionH = scene.sketchLabel ? 14 : 0;
     if (scene.sketchImageGdriveId) {
       try {
         const buffer = await gdrive.getFileBuffer(scene.sketchImageGdriveId);
         doc.image(buffer, x + 6, y + 6, {
-          fit: [colPicture - 12, rowH - 12],
+          fit: [colPicture - 12, rowH - 12 - captionH],
           align: "center",
           valign: "center",
         });
@@ -290,6 +286,13 @@ exportRouter.get("/storyboard/:id/pdf", async (req, res) => {
       });
       doc.fillColor("#000");
     }
+    if (scene.sketchLabel) {
+      doc.font("Helvetica-Bold").fontSize(7.5).fillColor("#000");
+      doc.text(scene.sketchLabel.toUpperCase(), x + 6, y + rowH - captionH - 2, {
+        width: colPicture - 12,
+        align: "center",
+      });
+    }
     x += colPicture;
     doc.moveTo(x, y).lineTo(x, y + rowH).strokeColor("#000").stroke();
 
@@ -300,9 +303,9 @@ exportRouter.get("/storyboard/:id/pdf", async (req, res) => {
     doc.moveTo(x, y).lineTo(x, y + rowH).dash(2, { space: 2 }).strokeColor("#000").stroke();
     doc.undash();
 
-    // DIALOGUE — belum ada field khusus di data, dikosongkan buat diisi manual
-    doc.font("Helvetica").fontSize(8).fillColor("#888");
-    doc.text("Talks\n\nDialogue / sound notes", x + 6, y + 6, { width: colDialogue - 12 });
+    // DIALOGUE — dari input dialogue di scene
+    doc.font("Helvetica").fontSize(8.5).fillColor(scene.dialogue ? "#000" : "#999");
+    doc.text(scene.dialogue || "-", x + 6, y + 6, { width: colDialogue - 12, height: rowH - 12 });
     doc.fillColor("#000");
     x += colDialogue;
     doc.moveTo(x, y).lineTo(x, y + rowH).strokeColor("#000").stroke();

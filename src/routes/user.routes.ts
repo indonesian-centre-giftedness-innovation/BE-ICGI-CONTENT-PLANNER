@@ -134,3 +134,32 @@ userRouter.patch("/:id", roleMiddleware("lead_admin"), async (req, res) => {
 
   res.json(updated);
 });
+
+// DELETE /users/:id — hapus akun permanen, khusus Lead/Admin
+userRouter.delete("/:id", roleMiddleware("lead_admin"), async (req, res) => {
+  if (req.params.id === req.user!.userId) {
+    return res.status(400).json({ message: "Tidak bisa menghapus akun sendiri" });
+  }
+
+  try {
+    const [deleted] = await db
+      .delete(users)
+      .where(eq(users.id, req.params.id))
+      .returning({ id: users.id });
+
+    if (!deleted) {
+      return res.status(404).json({ message: "User tidak ditemukan" });
+    }
+
+    res.json({ message: "User berhasil dihapus permanen" });
+  } catch (err: any) {
+    // FK constraint — user ini masih tercatat sebagai pembuat/pengunggah sesuatu
+    if (err?.code === "23503") {
+      return res.status(409).json({
+        message:
+          "User ini masih memiliki draft, media, atau riwayat lain yang terhubung — tidak bisa dihapus permanen. Nonaktifkan saja akunnya.",
+      });
+    }
+    throw err;
+  }
+});

@@ -34,7 +34,6 @@ export const contentPillarEnum = pgEnum("content_pillar", [
   "promosi",
 ]);
 
-export const contentFunnelEnum = pgEnum("content_funnel", ["tofu", "mofu", "bofu"]);
 
 export const aiModelEnum = pgEnum("ai_model", ["gpt", "gemini"]);
 
@@ -96,7 +95,6 @@ export const contents = pgTable("contents", {
   requiresApproval: boolean("requires_approval").default(true).notNull(),
   platform: varchar("platform", { length: 100 }), // misal: instagram, website, newsletter
   pillar: contentPillarEnum("pillar"), // edukasi / hiburan / promosi
-  funnel: contentFunnelEnum("funnel"), // tofu / mofu / bofu
   createdBy: uuid("created_by")
     .references(() => users.id)
     .notNull(),
@@ -144,7 +142,9 @@ export const storyboardScenes = pgTable("storyboard_scenes", {
     .notNull(),
   sceneOrder: integer("scene_order").notNull(),
   sketchImageGdriveId: varchar("sketch_image_gdrive_id", { length: 255 }),
+  sketchLabel: varchar("sketch_label", { length: 255 }), // nama/angle shoot dari template yang dipakai
   description: text("description"),
+  dialogue: text("dialogue"), // dialog/sound notes, sesuai kolom di export PDF
   durationSeconds: real("duration_seconds").default(0).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
