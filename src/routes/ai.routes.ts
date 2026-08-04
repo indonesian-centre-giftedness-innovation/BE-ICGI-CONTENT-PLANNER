@@ -26,6 +26,50 @@ async function assertContentAccess(contentId: string, userId: string, role: stri
   return { content, error: null };
 }
 
+// POST /ai/draft/generate — generate teks TANPA konten tersimpan dulu (dipakai di form
+// "Draft Konten Baru" sebelum user klik Simpan Draft). Tidak butuh contentId, tidak
+// dicatat ke content_ai_logs (belum ada konten untuk dilampiri lognya).
+aiRouter.post("/draft/generate", async (req, res) => {
+  const { title, platform, promptTemplateId, bodyDraft } = req.body ?? {};
+
+  let template: typeof promptTemplates.$inferSelect | undefined;
+  if (promptTemplateId) {
+    template = await db.query.promptTemplates.findFirst({
+      where: eq(promptTemplates.id, promptTemplateId),
+    });
+    if (!template) {
+      return res.status(404).json({ message: "Prompt template tidak ditemukan" });
+    }
+  }
+
+  const parts: string[] = [];
+  if (template) {
+    parts.push(`Brand voice / gaya penulisan:\n${template.templateText}`);
+    if (template.brandVoiceNotes) {
+      parts.push(`Catatan brand voice tambahan:\n${template.brandVoiceNotes}`);
+    }
+  }
+  if (title?.trim()) parts.push(`Judul konten: ${String(title).trim()}`);
+  if (platform?.trim()) parts.push(`Platform tujuan: ${String(platform).trim()}`);
+  if (bodyDraft?.trim()) {
+    parts.push(`Draft/arahan dari user (perbaiki/kembangkan ini):\n${String(bodyDraft).trim()}`);
+  }
+  parts.push(
+    "Tulis hasil akhirnya saja dalam Bahasa Indonesia, siap pakai untuk publikasi. Jangan tambahkan penjelasan meta di luar konten itu sendiri."
+  );
+
+  const finalPrompt = parts.join("\n\n");
+
+  let aiText: string;
+  try {
+    aiText = await generateWithGemini(finalPrompt, null);
+  } catch (err) {
+    return res.status(502).json({ message: err instanceof Error ? err.message : "Gagal generate lewat Gemini" });
+  }
+
+  res.json({ text: aiText });
+});
+
 // POST /ai/content/:contentId/generate — generate teks draft, bisa dilampiri file referensi (opsional)
 aiRouter.post("/content/:contentId/generate", upload.single("referenceFile"), async (req, res) => {
   const { promptTemplateId, instructions } = req.body ?? {};
