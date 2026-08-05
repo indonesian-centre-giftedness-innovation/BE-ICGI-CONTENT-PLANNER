@@ -3,7 +3,6 @@ import { desc, eq } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { promptTemplates } from "../db/schema.js";
 import { authMiddleware } from "../middleware/authMiddleware.js";
-import { roleMiddleware } from "../middleware/roleMiddleware.js";
 
 export const promptTemplateRouter = Router();
 
@@ -17,8 +16,8 @@ promptTemplateRouter.get("/", async (_req, res) => {
   res.json(rows);
 });
 
-// POST /prompt-templates — hanya Lead/Admin
-promptTemplateRouter.post("/", roleMiddleware("lead_admin"), async (req, res) => {
+// POST /prompt-templates — semua role boleh buat template
+promptTemplateRouter.post("/", async (req, res) => {
   const { name, templateText, brandVoiceNotes } = req.body ?? {};
 
   if (!name || !String(name).trim() || !templateText || !String(templateText).trim()) {
@@ -38,8 +37,8 @@ promptTemplateRouter.post("/", roleMiddleware("lead_admin"), async (req, res) =>
   res.status(201).json(created);
 });
 
-// PATCH /prompt-templates/:id — edit isi atau toggle aktif/nonaktif, hanya Lead/Admin
-promptTemplateRouter.patch("/:id", roleMiddleware("lead_admin"), async (req, res) => {
+// PATCH /prompt-templates/:id — edit isi atau toggle aktif/nonaktif, semua role boleh
+promptTemplateRouter.patch("/:id", async (req, res) => {
   const { name, templateText, brandVoiceNotes, isActive } = req.body ?? {};
 
   const [updated] = await db
@@ -60,9 +59,9 @@ promptTemplateRouter.patch("/:id", roleMiddleware("lead_admin"), async (req, res
   res.json(updated);
 });
 
-// DELETE /prompt-templates/:id — hanya Lead/Admin. Kalau pernah dipakai (ada log AI terkait),
+// DELETE /prompt-templates/:id — semua role boleh. Kalau pernah dipakai (ada log AI terkait),
 // hapus akan gagal karena foreign key — sarankan nonaktifkan saja lewat PATCH isActive:false.
-promptTemplateRouter.delete("/:id", roleMiddleware("lead_admin"), async (req, res) => {
+promptTemplateRouter.delete("/:id", async (req, res) => {
   try {
     const deleted = await db
       .delete(promptTemplates)

@@ -1,9 +1,10 @@
 import { Router } from "express";
 import { desc, eq } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { contents, approvals, notifications } from "../db/schema.js";
+import { contents, approvals } from "../db/schema.js";
 import { authMiddleware } from "../middleware/authMiddleware.js";
 import { roleMiddleware } from "../middleware/roleMiddleware.js";
+import { notifyUser, notifyLeadAdmins } from "../services/notification.service.js";
 
 export const approvalRouter = Router();
 
@@ -66,6 +67,15 @@ approvalRouter.post("/:contentId/submit", async (req, res) => {
     .where(eq(contents.id, req.params.contentId))
     .returning();
 
+  if (nextStatus === "pending_review") {
+    await notifyLeadAdmins(
+      "submitted",
+      `Konten "${content.title}" disubmit dan menunggu review.`,
+      content.id,
+      req.user!.userId
+    );
+  }
+
   res.json(updated);
 });
 
@@ -99,12 +109,7 @@ approvalRouter.post("/:contentId/approve", roleMiddleware("lead_admin"), async (
     .where(eq(contents.id, content.id))
     .returning();
 
-  await db.insert(notifications).values({
-    userId: content.createdBy,
-    type: "approval",
-    contentId: content.id,
-    message: `Konten "${content.title}" telah disetujui.`,
-  });
+  await notifyUser(content.createdBy, "approval", `Konten "${content.title}" telah disetujui.`, content.id);
 
   res.json(updated);
 });
@@ -143,12 +148,12 @@ approvalRouter.post("/:contentId/revisi", roleMiddleware("lead_admin"), async (r
     .where(eq(contents.id, content.id))
     .returning();
 
-  await db.insert(notifications).values({
-    userId: content.createdBy,
-    type: "revisi",
-    contentId: content.id,
-    message: `Konten "${content.title}" perlu direvisi: ${String(notes).trim()}`,
-  });
+  await notifyUser(
+    content.createdBy,
+    "revisi",
+    `Konten "${content.title}" perlu direvisi: ${String(notes).trim()}`,
+    content.id
+  );
 
   res.json(updated);
 });
@@ -173,6 +178,8 @@ approvalRouter.post("/:contentId/publish", roleMiddleware("lead_admin"), async (
     .set({ status: "published", updatedAt: new Date() })
     .where(eq(contents.id, content.id))
     .returning();
+
+  await notifyUser(content.createdBy, "published", `Konten "${content.title}" sudah tayang.`, content.id);
 
   res.json(updated);
 });

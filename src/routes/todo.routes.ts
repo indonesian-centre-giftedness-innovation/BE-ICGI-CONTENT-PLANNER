@@ -53,12 +53,17 @@ todoRouter.post("/", async (req, res) => {
     }
   }
 
+  // Creator/Staff tidak boleh assign ke orang lain — otomatis assign ke diri sendiri.
+  // Hanya Lead/Admin yang boleh pilih assignee bebas.
+  const isLeadAdmin = req.user!.role === "lead_admin";
+  const finalAssignedTo = isLeadAdmin ? assignedTo || null : req.user!.userId;
+
   const [created] = await db
     .insert(todos)
     .values({
       contentId: contentId || null,
       taskText: String(taskText).trim(),
-      assignedTo: assignedTo || null,
+      assignedTo: finalAssignedTo,
       createdBy: req.user!.userId,
     })
     .returning();
@@ -78,12 +83,16 @@ todoRouter.post("/", async (req, res) => {
 todoRouter.patch("/:id", async (req, res) => {
   const { taskText, isDone, assignedTo } = req.body ?? {};
 
+  // Creator/Staff tidak boleh ganti assignee ke orang lain lewat edit juga.
+  const isLeadAdmin = req.user!.role === "lead_admin";
+  const finalAssignedTo = isLeadAdmin ? assignedTo : assignedTo !== undefined ? req.user!.userId : undefined;
+
   const [updated] = await db
     .update(todos)
     .set({
       ...(taskText !== undefined ? { taskText: String(taskText).trim() } : {}),
       ...(isDone !== undefined ? { isDone } : {}),
-      ...(assignedTo !== undefined ? { assignedTo } : {}),
+      ...(finalAssignedTo !== undefined ? { assignedTo: finalAssignedTo || null } : {}),
     })
     .where(eq(todos.id, req.params.id))
     .returning();

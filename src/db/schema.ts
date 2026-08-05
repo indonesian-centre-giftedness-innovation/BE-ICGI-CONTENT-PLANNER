@@ -9,7 +9,7 @@ import {
   pgEnum,
   real,
 } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 
 // ============================================================
 // ENUMS
@@ -51,7 +51,10 @@ export const notificationTypeEnum = pgEnum("notification_type", [
   "approval",
   "revisi",
   "comment",
+  "reply",
   "media_approved",
+  "submitted",
+  "published",
 ]);
 
 // ============================================================
@@ -93,8 +96,8 @@ export const contents = pgTable("contents", {
   bodyAiGenerated: text("body_ai_generated"),
   status: contentStatusEnum("status").default("draft").notNull(),
   requiresApproval: boolean("requires_approval").default(true).notNull(),
-  platform: varchar("platform", { length: 100 }), // misal: instagram, website, newsletter
-  pillar: contentPillarEnum("pillar"), // edukasi / hiburan / promosi
+  platforms: text("platforms").array().$type<string[]>().default(sql`'{}'::text[]`).notNull(), // instagram, website, newsletter, dll — bisa lebih dari satu
+  pillar: contentPillarEnum("pillar"), // edukasi / hiburan / promosi — cuma satu
   createdBy: uuid("created_by")
     .references(() => users.id)
     .notNull(),

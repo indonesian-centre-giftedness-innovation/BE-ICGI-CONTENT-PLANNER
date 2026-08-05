@@ -7,11 +7,11 @@ import {
   mediaVersions,
   mediaComments,
   contents,
-  notifications,
 } from "../db/schema.js";
 import { authMiddleware } from "../middleware/authMiddleware.js";
 import { roleMiddleware } from "../middleware/roleMiddleware.js";
 import * as gdrive from "../services/gdrive.service.js";
+import { notifyUser, notifyLeadAdmins } from "../services/notification.service.js";
 
 export const mediaRouter = Router();
 
@@ -136,6 +136,13 @@ mediaRouter.post("/standalone", upload.single("file"), async (req, res) => {
     })
     .returning();
 
+  await notifyLeadAdmins(
+    "submitted",
+    `Media baru "${req.file.originalname}" (standalone) menunggu review.`,
+    null,
+    req.user!.userId
+  );
+
   res.status(201).json({ ...asset, versions: [version] });
 });
 
@@ -202,6 +209,13 @@ mediaRouter.post("/content/:contentId", upload.single("file"), async (req, res) 
     })
     .returning();
 
+  await notifyLeadAdmins(
+    "submitted",
+    `Media baru "${req.file.originalname}" untuk konten "${content.title}" menunggu review.`,
+    content.id,
+    req.user!.userId
+  );
+
   res.status(201).json({ ...asset, versions: [version] });
 });
 
@@ -251,6 +265,13 @@ mediaRouter.post("/:assetId/versions", upload.single("file"), async (req, res) =
       uploadedBy: req.user!.userId,
     })
     .returning();
+
+  await notifyLeadAdmins(
+    "submitted",
+    `Versi baru media "${asset.fileName}" (v${nextVersionNumber}) menunggu review.`,
+    asset.contentId,
+    req.user!.userId
+  );
 
   res.status(201).json(version);
 });
@@ -362,12 +383,12 @@ mediaRouter.post(
 
     // 4. notifikasi ke creator (pengunggah asset)
     if (asset.uploadedBy) {
-      await db.insert(notifications).values({
-        userId: asset.uploadedBy,
-        type: "media_approved",
-        contentId: asset.contentId,
-        message: `Media "${asset.fileName}" (versi ${version.versionNumber}) telah disetujui.`,
-      });
+      await notifyUser(
+        asset.uploadedBy,
+        "media_approved",
+        `Media "${asset.fileName}" (versi ${version.versionNumber}) telah disetujui.`,
+        asset.contentId
+      );
     }
 
     res.json(updatedVersion);
@@ -425,12 +446,27 @@ mediaRouter.post("/versions/:versionId/comments", async (req, res) => {
     where: eq(mediaAssets.id, version.mediaAssetId),
   });
   if (asset?.uploadedBy && asset.uploadedBy !== req.user!.userId) {
-    await db.insert(notifications).values({
-      userId: asset.uploadedBy,
-      type: "comment",
-      contentId: asset.contentId,
-      message: `Ada komentar baru di media "${asset.fileName}": ${String(commentText).trim().slice(0, 100)}`,
+    await notifyUser(
+      asset.uploadedBy,
+      "comment",
+      `Ada komentar baru di media "${asset.fileName}": ${String(commentText).trim().slice(0, 100)}`,
+      asset.contentId
+    );
+  }
+
+  // kalau ini balasan, notifikasi juga ke penulis komentar yang dibalas (kalau beda orang)
+  if (parentCommentId) {
+    const parent = await db.query.mediaComments.findFirst({
+      where: eq(mediaComments.id, parentCommentId),
     });
+    if (parent && parent.userId !== req.user!.userId && parent.userId !== asset?.uploadedBy) {
+      await notifyUser(
+        parent.userId,
+        "reply",
+        `Komentar kamu di media "${asset?.fileName ?? ""}" dibalas: ${String(commentText).trim().slice(0, 100)}`,
+        asset?.contentId ?? null
+      );
+    }
   }
 
   res.status(201).json(created);

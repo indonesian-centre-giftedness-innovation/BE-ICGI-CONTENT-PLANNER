@@ -30,7 +30,7 @@ async function assertContentAccess(contentId: string, userId: string, role: stri
 // "Draft Konten Baru" sebelum user klik Simpan Draft). Tidak butuh contentId, tidak
 // dicatat ke content_ai_logs (belum ada konten untuk dilampiri lognya).
 aiRouter.post("/draft/generate", async (req, res) => {
-  const { title, platform, promptTemplateId, bodyDraft } = req.body ?? {};
+  const { title, platforms, pillar, promptTemplateId, bodyDraft, instructions } = req.body ?? {};
 
   let template: typeof promptTemplates.$inferSelect | undefined;
   if (promptTemplateId) {
@@ -50,9 +50,13 @@ aiRouter.post("/draft/generate", async (req, res) => {
     }
   }
   if (title?.trim()) parts.push(`Judul konten: ${String(title).trim()}`);
-  if (platform?.trim()) parts.push(`Platform tujuan: ${String(platform).trim()}`);
+  if (Array.isArray(platforms) && platforms.length) parts.push(`Platform tujuan: ${platforms.join(", ")}`);
+  if (pillar?.trim()) parts.push(`Pillar/kategori konten: ${String(pillar).trim()}`);
   if (bodyDraft?.trim()) {
     parts.push(`Draft/arahan dari user (perbaiki/kembangkan ini):\n${String(bodyDraft).trim()}`);
+  }
+  if (instructions?.trim()) {
+    parts.push(`Instruksi tambahan dari user: ${String(instructions).trim()}`);
   }
   parts.push(
     "Tulis hasil akhirnya saja dalam Bahasa Indonesia, siap pakai untuk publikasi. Jangan tambahkan penjelasan meta di luar konten itu sendiri."
@@ -99,7 +103,7 @@ aiRouter.post("/content/:contentId/generate", upload.single("referenceFile"), as
     }
   }
   parts.push(`Judul konten: ${content!.title}`);
-  if (content!.platform) parts.push(`Platform tujuan: ${content!.platform}`);
+  if (content!.platforms && content!.platforms.length) parts.push(`Platform tujuan: ${content!.platforms.join(", ")}`);
   if (content!.bodyDraft?.trim()) {
     parts.push(`Draft yang sudah ada (perbaiki/kembangkan ini):\n${content!.bodyDraft}`);
   }
@@ -148,6 +152,89 @@ aiRouter.post("/content/:contentId/generate", upload.single("referenceFile"), as
   });
 
   res.json(updatedContent);
+});
+
+import { notifyLeadAdmins } from "../services/notification.service.js";
+
+// POST /ai/image/generate — generate gambar TANPA simpan dulu (standalone, tidak terikat draft).
+// Bisa dilampiri referenceFile: baik referensi awal dari user, atau hasil generate sebelumnya
+// (dikirim ulang sebagai file) buat alur revisi "generate ulang dengan perbaikan".
+aiRouter.post("/image/generate", upload.single("referenceFile"), async (req, res) => {
+  const { prompt } = req.body ?? {};
+  if (!prompt || !String(prompt).trim()) {
+    return res.status(400).json({ message: "Prompt gambar wajib diisi" });
+  }
+
+  const referenceImage =
+    req.file && req.file.mimetype.startsWith("image/")
+      ? { base64: req.file.buffer.toString("base64"), mimeType: req.file.mimetype }
+      : null;
+
+  let generated: { buffer: Buffer; mimeType: string };
+  try {
+    generated = await generateImageWithGemini(String(prompt).trim(), referenceImage);
+  } catch (err) {
+    return res.status(502).json({
+      message: err instanceof Error ? err.message : "Gagal generate gambar lewat Gemini",
+    });
+  }
+
+  res.json({
+    imageBase64: generated.buffer.toString("base64"),
+    mimeType: generated.mimeType,
+  });
+});
+
+// POST /ai/image/save — simpan gambar yang sudah digenerate (dan disetujui user) sebagai
+// media standalone (tidak terikat konten), masuk ke alur review media yang sudah ada.
+aiRouter.post("/image/save", async (req, res) => {
+  const { imageBase64, mimeType, fileName } = req.body ?? {};
+  if (!imageBase64 || !mimeType) {
+    return res.status(400).json({ message: "imageBase64 dan mimeType wajib diisi" });
+  }
+
+  const buffer = Buffer.from(String(imageBase64), "base64");
+  const ext = String(mimeType).split("/")[1] || "png";
+  const finalFileName = fileName ? String(fileName).trim() : `ai-generated-${Date.now()}.${ext}`;
+
+  let gdriveFileId: string;
+  try {
+    gdriveFileId = await gdrive.uploadFile(buffer, finalFileName, String(mimeType));
+  } catch (err) {
+    return res.status(502).json({
+      message: err instanceof Error ? err.message : "Gagal upload gambar ke Drive",
+    });
+  }
+
+  const [asset] = await db
+    .insert(mediaAssets)
+    .values({
+      contentId: null,
+      fileName: finalFileName,
+      mimeType: String(mimeType),
+      uploadedBy: req.user!.userId,
+    })
+    .returning();
+
+  const [version] = await db
+    .insert(mediaVersions)
+    .values({
+      mediaAssetId: asset.id,
+      versionNumber: 1,
+      gdriveFileId,
+      status: "pending",
+      uploadedBy: req.user!.userId,
+    })
+    .returning();
+
+  await notifyLeadAdmins(
+    "submitted",
+    `Media baru "${finalFileName}" (hasil AI, standalone) menunggu review.`,
+    null,
+    req.user!.userId
+  );
+
+  res.status(201).json({ ...asset, versions: [version] });
 });
 
 // POST /ai/content/:contentId/generate-image — generate gambar, bisa dilampiri gambar referensi (opsional)

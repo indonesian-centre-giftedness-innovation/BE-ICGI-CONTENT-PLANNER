@@ -47,3 +47,23 @@ notificationRouter.patch("/read-all", async (req, res) => {
 
   res.json({ message: "Semua notifikasi ditandai sudah dibaca" });
 });
+
+// DELETE /notifications/:id — hapus satu notifikasi milik user yang login
+notificationRouter.delete("/:id", async (req, res) => {
+  const [deleted] = await db
+    .delete(notifications)
+    .where(and(eq(notifications.id, req.params.id), eq(notifications.userId, req.user!.userId)))
+    .returning();
+
+  if (!deleted) {
+    return res.status(404).json({ message: "Notifikasi tidak ditemukan" });
+  }
+
+  res.json({ message: "Notifikasi dihapus" });
+});
+
+// DELETE /notifications — hapus semua notifikasi milik user yang login
+notificationRouter.delete("/", async (req, res) => {
+  await db.delete(notifications).where(eq(notifications.userId, req.user!.userId));
+  res.json({ message: "Semua notifikasi dihapus" });
+});

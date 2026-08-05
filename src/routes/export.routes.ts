@@ -67,8 +67,8 @@ exportRouter.get("/content.xlsx", async (_req, res) => {
   for (const c of rows) {
     const row = sheet.addRow({
       title: c.title,
-      platform: c.platform || "-",
-      pillar: c.pillar ? PILLAR_LABEL[c.pillar] : "-",
+      platform: c.platforms && c.platforms.length ? c.platforms.join(", ") : "-",
+      pillar: c.pillar ? PILLAR_LABEL[c.pillar] || c.pillar : "-",
       status: STATUS_LABEL[c.status] || c.status,
       author: c.author?.name || "-",
       createdAt: fmtDate(c.createdAt),
@@ -154,8 +154,8 @@ exportRouter.get("/content.pdf", async (_req, res) => {
 
     const values: Record<string, string> = {
       title: c.title,
-      platform: c.platform || "-",
-      pillar: c.pillar ? PILLAR_LABEL[c.pillar] : "-",
+      platform: c.platforms && c.platforms.length ? c.platforms.join(", ") : "-",
+      pillar: c.pillar ? PILLAR_LABEL[c.pillar] || c.pillar : "-",
       status: STATUS_LABEL[c.status] || c.status,
       author: c.author?.name || "-",
       updatedAt: fmtDate(c.updatedAt),

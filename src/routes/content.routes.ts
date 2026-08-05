@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { and, desc, eq, ilike } from "drizzle-orm";
+import { and, desc, eq, ilike, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { contents } from "../db/schema.js";
 import { authMiddleware } from "../middleware/authMiddleware.js";
@@ -14,8 +14,8 @@ contentRouter.use(authMiddleware);
  * Query params opsional:
  *  - status: draft | pending_review | revisi | approved | published
  *  - search: cari di title
- *  - platform: instagram | website | dll (exact match, case-insensitive)
- *  - pillar: edukasi | hiburan | promosi
+ *  - platform: instagram | website | dll (cocok kalau konten punya platform ini, bisa lebih dari satu platform per konten)
+ *  - pillar: edukasi | hiburan | promosi (exact match, cuma satu pillar per konten)
  */
 contentRouter.get("/", async (req, res) => {
   const { status, search, platform, pillar } = req.query as {
@@ -33,7 +33,7 @@ contentRouter.get("/", async (req, res) => {
     conditions.push(ilike(contents.title, `%${search}%`));
   }
   if (platform) {
-    conditions.push(ilike(contents.platform, platform));
+    conditions.push(sql`${contents.platforms} @> ARRAY[${platform}]::text[]`);
   }
   if (pillar) {
     conditions.push(eq(contents.pillar, pillar as any));
@@ -70,7 +70,7 @@ contentRouter.get("/:id", async (req, res) => {
 
 // POST /content — buat draft baru
 contentRouter.post("/", async (req, res) => {
-  const { title, bodyDraft, platform, pillar } = req.body ?? {};
+  const { title, bodyDraft, platforms, pillar } = req.body ?? {};
 
   if (!title || !String(title).trim()) {
     return res.status(400).json({ message: "Judul wajib diisi" });
@@ -83,7 +83,7 @@ contentRouter.post("/", async (req, res) => {
     .values({
       title: String(title).trim(),
       bodyDraft: bodyDraft ?? null,
-      platform: platform ?? null,
+      platforms: Array.isArray(platforms) ? platforms.filter(Boolean) : [],
       pillar: pillar || null,
       status: "draft",
       requiresApproval,
@@ -111,7 +111,7 @@ contentRouter.patch("/:id", async (req, res) => {
     return res.status(403).json({ message: "Tidak punya akses mengubah konten ini" });
   }
 
-  const { title, bodyDraft, platform, pillar, status } = req.body ?? {};
+  const { title, bodyDraft, platforms, pillar, status } = req.body ?? {};
 
   // hanya lead_admin yang boleh set status secara bebas
   // (alur approve/revisi formal nanti lewat endpoint /approval)
@@ -124,7 +124,7 @@ contentRouter.patch("/:id", async (req, res) => {
     .set({
       ...(title !== undefined ? { title: String(title).trim() } : {}),
       ...(bodyDraft !== undefined ? { bodyDraft } : {}),
-      ...(platform !== undefined ? { platform } : {}),
+      ...(platforms !== undefined ? { platforms: Array.isArray(platforms) ? platforms.filter(Boolean) : [] } : {}),
       ...(pillar !== undefined ? { pillar: pillar || null } : {}),
       ...(status !== undefined ? { status } : {}),
       updatedAt: new Date(),
