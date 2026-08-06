@@ -2,7 +2,15 @@ import { eq } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { notifications, users } from "../db/schema.js";
 
-type NotificationType = "approval" | "revisi" | "comment" | "reply" | "media_approved" | "submitted" | "published";
+type NotificationType =
+  | "approval"
+  | "revisi"
+  | "comment"
+  | "reply"
+  | "media_approved"
+  | "submitted"
+  | "media_submitted"
+  | "published";
 
 export async function notifyUser(userId: string, type: NotificationType, message: string, contentId?: string | null) {
   await db.insert(notifications).values({

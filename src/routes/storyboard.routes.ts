@@ -20,7 +20,7 @@ storyboardRouter.get("/", async (_req, res) => {
   const rows = await db.query.storyboards.findMany({
     orderBy: (t, { desc }) => [desc(t.updatedAt)],
     with: {
-      content: { columns: { id: true, title: true, status: true, platform: true } },
+      content: { columns: { id: true, title: true, status: true, platforms: true } },
       scenes: { columns: { id: true, durationSeconds: true } },
     },
   });

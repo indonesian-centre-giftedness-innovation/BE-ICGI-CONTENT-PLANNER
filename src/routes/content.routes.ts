@@ -119,6 +119,16 @@ contentRouter.patch("/:id", async (req, res) => {
     return res.status(403).json({ message: "Hanya Lead/Admin yang bisa mengubah status" });
   }
 
+  // Lead/Admin yang BUKAN pemilik konten cuma boleh me-review (approve/minta revisi/override status
+  // lewat endpoint terpisah) — tidak boleh mengedit isi draft orang lain langsung dari sini.
+  const isEditingContentFields =
+    title !== undefined || bodyDraft !== undefined || platforms !== undefined || pillar !== undefined;
+  if (isEditingContentFields && !isOwner) {
+    return res.status(403).json({
+      message: "Tidak bisa mengedit draft milik orang lain — cuma bisa approve atau minta revisi.",
+    });
+  }
+
   const [updated] = await db
     .update(contents)
     .set({

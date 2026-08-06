@@ -58,7 +58,7 @@ mediaRouter.get("/", async (_req, res) => {
   const rows = await db.query.mediaAssets.findMany({
     orderBy: (t, { desc }) => [desc(t.createdAt)],
     with: {
-      content: { columns: { id: true, title: true, status: true, platform: true } },
+      content: { columns: { id: true, title: true, status: true, platforms: true } },
       versions: {
         where: isNull(mediaVersions.deletedAt),
         orderBy: [desc(mediaVersions.versionNumber)],
@@ -72,6 +72,7 @@ mediaRouter.get("/", async (_req, res) => {
     fileName: r.fileName,
     mimeType: r.mimeType,
     createdAt: r.createdAt,
+    uploadedBy: r.uploadedBy,
     content: r.content,
     latestVersion: r.versions[0] ?? null,
     versionCount: r.versions.length,
@@ -137,7 +138,7 @@ mediaRouter.post("/standalone", upload.single("file"), async (req, res) => {
     .returning();
 
   await notifyLeadAdmins(
-    "submitted",
+    "media_submitted",
     `Media baru "${req.file.originalname}" (standalone) menunggu review.`,
     null,
     req.user!.userId
@@ -210,7 +211,7 @@ mediaRouter.post("/content/:contentId", upload.single("file"), async (req, res) 
     .returning();
 
   await notifyLeadAdmins(
-    "submitted",
+    "media_submitted",
     `Media baru "${req.file.originalname}" untuk konten "${content.title}" menunggu review.`,
     content.id,
     req.user!.userId
@@ -267,7 +268,7 @@ mediaRouter.post("/:assetId/versions", upload.single("file"), async (req, res) =
     .returning();
 
   await notifyLeadAdmins(
-    "submitted",
+    "media_submitted",
     `Versi baru media "${asset.fileName}" (v${nextVersionNumber}) menunggu review.`,
     asset.contentId,
     req.user!.userId

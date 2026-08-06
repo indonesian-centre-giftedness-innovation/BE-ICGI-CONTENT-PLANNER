@@ -54,6 +54,7 @@ export const notificationTypeEnum = pgEnum("notification_type", [
   "reply",
   "media_approved",
   "submitted",
+  "media_submitted",
   "published",
 ]);
 
