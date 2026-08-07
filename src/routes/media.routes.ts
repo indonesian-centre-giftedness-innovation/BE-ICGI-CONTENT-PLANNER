@@ -280,12 +280,24 @@ mediaRouter.post("/:assetId/versions", upload.single("file"), async (req, res) =
 // GET /media/versions/:versionId/file — proxy stream file dari Google Drive ke client
 // Mendukung header Range (dipakai browser mobile untuk streaming/seek video bertahap) —
 // tanpa ini, video sering gagal dimuat total di HP walau lancar di desktop.
+// Juga mengirim Cache-Control + ETag: file per versi bersifat permanen (versi baru = id
+// baru), jadi browser boleh simpan cache-nya lama dan tidak perlu unduh ulang tiap
+// pindah halaman/refresh.
 mediaRouter.get("/versions/:versionId/file", async (req, res) => {
   const version = await db.query.mediaVersions.findFirst({
     where: eq(mediaVersions.id, req.params.versionId),
   });
   if (!version || version.deletedAt) {
     return res.status(404).json({ message: "File tidak ditemukan" });
+  }
+
+  // File per versi tidak pernah berubah isinya — cukup pakai id versi sebagai ETag,
+  // tanpa perlu tanya Google Drive dulu kalau browser sudah punya cache yang valid.
+  const etag = `"media-${version.id}"`;
+  res.setHeader("Cache-Control", "private, max-age=31536000, immutable");
+  res.setHeader("ETag", etag);
+  if (req.headers["if-none-match"] === etag) {
+    return res.status(304).end();
   }
 
   try {

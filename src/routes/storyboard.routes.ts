@@ -376,6 +376,15 @@ storyboardRouter.get("/scenes/:sceneId/sketch", async (req, res) => {
     return res.status(404).json({ message: "Sketsa belum ada" });
   }
 
+  // gambar sketsa tidak sering berganti — cache di browser supaya tidak diunduh
+  // ulang tiap pindah halaman, tapi tidak "immutable" karena bisa diganti manual
+  const etag = `"sketch-${scene.id}-${scene.sketchImageGdriveId}"`;
+  res.setHeader("Cache-Control", "private, max-age=604800");
+  res.setHeader("ETag", etag);
+  if (req.headers["if-none-match"] === etag) {
+    return res.status(304).end();
+  }
+
   try {
     const { stream, mimeType, fileName } = await gdrive.getFileStream(scene.sketchImageGdriveId);
     res.setHeader("Content-Type", mimeType);
@@ -442,6 +451,15 @@ storyboardRouter.get("/templates/:id/image", async (req, res) => {
 
   if (!template) {
     return res.status(404).json({ message: "Template tidak ditemukan" });
+  }
+
+  // template sketsa permanen (tidak pernah diganti isinya, cuma dihapus/buat baru) —
+  // aman di-cache lama sekali di browser
+  const etag = `"template-${template.id}"`;
+  res.setHeader("Cache-Control", "private, max-age=31536000, immutable");
+  res.setHeader("ETag", etag);
+  if (req.headers["if-none-match"] === etag) {
+    return res.status(304).end();
   }
 
   try {
