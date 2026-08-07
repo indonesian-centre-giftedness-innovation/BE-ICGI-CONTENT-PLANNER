@@ -10,6 +10,34 @@ export const storyboardRouter = Router();
 
 storyboardRouter.use(authMiddleware);
 
+/** Cuma pemilik storyboard yang boleh edit — Lead/Admin tetap bisa LIHAT (endpoint GET tidak dibatasi),
+ * tapi tidak bisa ubah isi storyboard milik orang lain. Kembalikan storyboard row kalau boleh, null kalau
+ * sudah dikirim response error (404/403) dan handler pemanggil harus langsung `return`. */
+async function requireStoryboardOwner(req: any, res: any, storyboardId: string) {
+  const storyboard = await db.query.storyboards.findFirst({ where: eq(storyboards.id, storyboardId) });
+  if (!storyboard) {
+    res.status(404).json({ message: "Storyboard tidak ditemukan" });
+    return null;
+  }
+  if (storyboard.createdBy !== req.user!.userId) {
+    res.status(403).json({ message: "Tidak bisa mengedit storyboard milik orang lain." });
+    return null;
+  }
+  return storyboard;
+}
+
+/** Sama seperti di atas tapi lewat sceneId — dipakai endpoint yang cuma punya sceneId di params. */
+async function requireSceneOwner(req: any, res: any, sceneId: string) {
+  const scene = await db.query.storyboardScenes.findFirst({ where: eq(storyboardScenes.id, sceneId) });
+  if (!scene) {
+    res.status(404).json({ message: "Scene tidak ditemukan" });
+    return null;
+  }
+  const storyboard = await requireStoryboardOwner(req, res, scene.storyboardId);
+  if (!storyboard) return null;
+  return scene;
+}
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 20 * 1024 * 1024 }, // 20MB cukup buat gambar sketsa
@@ -120,6 +148,8 @@ storyboardRouter.post("/", async (req, res) => {
 // DELETE /storyboard/:id — hapus storyboard permanen beserta semua scene-nya
 // (file sketsa milik template TIDAK ikut terhapus dari Drive, hanya file sketsa manual)
 storyboardRouter.delete("/:id", async (req, res) => {
+  if (!(await requireStoryboardOwner(req, res, req.params.id))) return;
+
   const scenes = await db
     .select()
     .from(storyboardScenes)
@@ -147,6 +177,8 @@ storyboardRouter.delete("/:id", async (req, res) => {
 
 // PATCH /storyboard/:id — ubah judul storyboard
 storyboardRouter.patch("/:id", async (req, res) => {
+  if (!(await requireStoryboardOwner(req, res, req.params.id))) return;
+
   const { title } = req.body ?? {};
 
   const [updated] = await db
@@ -171,6 +203,9 @@ storyboardRouter.post("/:id/scenes", async (req, res) => {
   });
   if (!storyboard) {
     return res.status(404).json({ message: "Storyboard tidak ditemukan" });
+  }
+  if (storyboard.createdBy !== req.user!.userId) {
+    return res.status(403).json({ message: "Tidak bisa mengedit storyboard milik orang lain." });
   }
 
   const existingScenes = await db
@@ -200,6 +235,8 @@ storyboardRouter.post("/:id/scenes", async (req, res) => {
 
 // PATCH /storyboard/scenes/:sceneId — ubah deskripsi/durasi/sketsa scene
 storyboardRouter.patch("/scenes/:sceneId", async (req, res) => {
+  if (!(await requireSceneOwner(req, res, req.params.sceneId))) return;
+
   const { description, dialogue, durationSeconds, sketchImageGdriveId } = req.body ?? {};
 
   const [updated] = await db
@@ -231,6 +268,8 @@ storyboardRouter.patch("/scenes/:sceneId/move", async (req, res) => {
     return res.status(404).json({ message: "Scene tidak ditemukan" });
   }
 
+  if (!(await requireStoryboardOwner(req, res, current.storyboardId))) return;
+
   const siblings = await db
     .select()
     .from(storyboardScenes)
@@ -261,6 +300,8 @@ storyboardRouter.patch("/scenes/:sceneId/move", async (req, res) => {
 
 // DELETE /storyboard/scenes/:sceneId
 storyboardRouter.delete("/scenes/:sceneId", async (req, res) => {
+  if (!(await requireSceneOwner(req, res, req.params.sceneId))) return;
+
   const deleted = await db
     .delete(storyboardScenes)
     .where(eq(storyboardScenes.id, req.params.sceneId))
@@ -288,6 +329,8 @@ storyboardRouter.post(
     if (!scene) {
       return res.status(404).json({ message: "Scene tidak ditemukan" });
     }
+
+    if (!(await requireStoryboardOwner(req, res, scene.storyboardId))) return;
 
     let gdriveFileId: string;
     try {
@@ -451,6 +494,8 @@ storyboardRouter.post("/scenes/:sceneId/apply-template", async (req, res) => {
   if (!scene) {
     return res.status(404).json({ message: "Scene tidak ditemukan" });
   }
+
+  if (!(await requireStoryboardOwner(req, res, scene.storyboardId))) return;
 
   const template = await db.query.storyboardSketchTemplates.findFirst({
     where: eq(storyboardSketchTemplates.id, templateId),

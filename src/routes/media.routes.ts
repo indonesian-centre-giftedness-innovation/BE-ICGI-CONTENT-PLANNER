@@ -392,6 +392,15 @@ mediaRouter.post(
       );
     }
 
+    // 5. draft script tidak butuh approval sendiri — status konten sekarang mengikuti media:
+    // begitu ada media yang disetujui, konten terkait otomatis ditandai "approved" (kalau masih draft)
+    if (asset.contentId) {
+      const content = await db.query.contents.findFirst({ where: eq(contents.id, asset.contentId) });
+      if (content && content.status === "draft") {
+        await db.update(contents).set({ status: "approved", updatedAt: new Date() }).where(eq(contents.id, asset.contentId));
+      }
+    }
+
     res.json(updatedVersion);
   }
 );
