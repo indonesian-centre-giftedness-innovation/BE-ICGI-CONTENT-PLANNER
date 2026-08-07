@@ -20,6 +20,11 @@ app.use(express.json());
 app.use(
   cors({
     origin: process.env.FRONTEND_ORIGIN || "http://localhost:5173",
+    // Header tambahan yang perlu "dibuka" ke JS lintas-domain — tanpa ini, respons
+    // GET media/gambar tetap sukses ditampilkan langsung di <img>/<video>, tapi
+    // service worker (Workbox) tidak bisa BACA info ukuran/potongan filenya sama
+    // sekali, jadi caching & Range-slicing untuk video gagal diam-diam.
+    exposedHeaders: ["Content-Range", "Accept-Ranges", "Content-Length", "ETag"],
   })
 );
 
