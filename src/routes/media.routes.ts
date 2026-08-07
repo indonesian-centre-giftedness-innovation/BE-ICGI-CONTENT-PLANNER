@@ -278,6 +278,8 @@ mediaRouter.post("/:assetId/versions", upload.single("file"), async (req, res) =
 });
 
 // GET /media/versions/:versionId/file — proxy stream file dari Google Drive ke client
+// Mendukung header Range (dipakai browser mobile untuk streaming/seek video bertahap) —
+// tanpa ini, video sering gagal dimuat total di HP walau lancar di desktop.
 mediaRouter.get("/versions/:versionId/file", async (req, res) => {
   const version = await db.query.mediaVersions.findFirst({
     where: eq(mediaVersions.id, req.params.versionId),
@@ -287,9 +289,26 @@ mediaRouter.get("/versions/:versionId/file", async (req, res) => {
   }
 
   try {
-    const { stream, mimeType, fileName } = await gdrive.getFileStream(version.gdriveFileId);
+    const range = req.headers.range; // contoh: "bytes=0-1048575"
+    const { stream, mimeType, fileName, totalSize, status, contentRange, contentLength } =
+      await gdrive.getFileStream(version.gdriveFileId, range);
+
     res.setHeader("Content-Type", mimeType);
     res.setHeader("Content-Disposition", `inline; filename="${fileName}"`);
+    res.setHeader("Accept-Ranges", "bytes");
+
+    if (range && status === 206) {
+      // Google Drive berhasil memenuhi permintaan potongan file (dipakai browser mobile
+      // untuk streaming/seek video secara bertahap)
+      res.status(206);
+      if (contentRange) res.setHeader("Content-Range", contentRange);
+      if (contentLength) res.setHeader("Content-Length", contentLength);
+    } else {
+      // kirim file utuh — tetap sertakan Content-Length kalau tahu ukurannya,
+      // supaya browser (terutama mobile) tahu progress loading-nya
+      if (totalSize) res.setHeader("Content-Length", String(totalSize));
+    }
+
     stream.pipe(res);
   } catch (err) {
     res.status(502).json({

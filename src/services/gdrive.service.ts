@@ -128,8 +128,14 @@ export async function deleteFile(fileId: string): Promise<void> {
 /**
  * Ambil file dari Drive sebagai stream, untuk di-proxy ke client lewat backend
  * (supaya file tidak perlu di-set public permission).
+ *
+ * `range` opsional (format header HTTP standar, misal "bytes=0-1048575") — kalau
+ * dikasih, diteruskan ke Google Drive API supaya Drive cuma kirim potongan itu saja.
+ * Ini penting untuk video: browser (terutama di HP/mobile) sering minta file
+ * per-potongan (seek, buffering bertahap) lewat header Range, dan kalau server
+ * tidak mendukungnya, video bisa gagal total dimuat di beberapa browser mobile.
  */
-export async function getFileStream(fileId: string) {
+export async function getFileStream(fileId: string, range?: string) {
   const drive = getDriveClient();
 
   const metaRes = await drive.files.get({
@@ -137,15 +143,24 @@ export async function getFileStream(fileId: string) {
     fields: "name, mimeType, size",
   });
 
-  const streamRes = await drive.files.get(
-    { fileId, alt: "media" },
-    { responseType: "stream" }
-  );
+  const requestOptions: Record<string, unknown> = { responseType: "stream" };
+  if (range) {
+    requestOptions.headers = { Range: range };
+  }
+
+  const streamRes = await drive.files.get({ fileId, alt: "media" }, requestOptions);
 
   return {
     stream: streamRes.data as unknown as NodeJS.ReadableStream,
     mimeType: metaRes.data.mimeType || "application/octet-stream",
     fileName: metaRes.data.name || "file",
+    // total ukuran file asli (dari metadata, bukan dari potongan yang diminta)
+    totalSize: metaRes.data.size ? Number(metaRes.data.size) : undefined,
+    // status & header asli dari Google Drive — 206 kalau Range berhasil dipenuhi,
+    // 200 kalau Drive mengabaikan Range dan tetap kirim file utuh
+    status: streamRes.status,
+    contentRange: (streamRes.headers as Record<string, string> | undefined)?.["content-range"],
+    contentLength: (streamRes.headers as Record<string, string> | undefined)?.["content-length"],
   };
 }
 /** Ambil isi file dari Drive langsung sebagai Buffer (dipakai buat embed gambar ke PDF). */
