@@ -14,7 +14,15 @@ declare global {
 
 export async function authMiddleware(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
-  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : undefined;
+  const headerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : undefined;
+
+  // Tag <video>/<img>/<a download> tidak bisa menyisipkan header custom saat
+  // browser me-load src/href-nya langsung — jadi untuk endpoint yang disajikan
+  // lewat src/href (misal file media), token boleh dikirim lewat query param
+  // ?token=... sebagai alternatif dari header Authorization.
+  const queryToken = typeof req.query.token === "string" ? req.query.token : undefined;
+
+  const token = headerToken || queryToken;
 
   if (!token) {
     return res.status(401).json({ message: "Belum login" });
