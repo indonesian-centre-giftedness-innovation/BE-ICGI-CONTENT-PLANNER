@@ -1,7 +1,6 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
-import cookieParser from "cookie-parser";
 import { authRouter } from "./routes/auth.routes.js";
 import { contentRouter } from "./routes/content.routes.js";
 import { storyboardRouter } from "./routes/storyboard.routes.js";
@@ -18,11 +17,9 @@ import { exportRouter } from "./routes/export.routes.js";
 const app = express();
 
 app.use(express.json());
-app.use(cookieParser());
 app.use(
   cors({
     origin: process.env.FRONTEND_ORIGIN || "http://localhost:5173",
-    credentials: true,
   })
 );
 
@@ -45,5 +42,3 @@ const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
   console.log(`Backend jalan di http://localhost:${PORT}`);
 });
-
-//bismillah kelar 

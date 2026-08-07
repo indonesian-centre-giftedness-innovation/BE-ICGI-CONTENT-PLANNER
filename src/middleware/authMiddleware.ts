@@ -4,8 +4,6 @@ import { verifyToken, type AuthTokenPayload } from "../services/auth.service.js"
 import { db } from "../db/index.js";
 import { users } from "../db/schema.js";
 
-const isProd = process.env.NODE_ENV === "production";
-
 declare global {
   namespace Express {
     interface Request {
@@ -15,7 +13,8 @@ declare global {
 }
 
 export async function authMiddleware(req: Request, res: Response, next: NextFunction) {
-  const token = req.cookies?.token;
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : undefined;
 
   if (!token) {
     return res.status(401).json({ message: "Belum login" });
@@ -38,11 +37,6 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
     });
 
     if (!user || !user.isActive) {
-      res.clearCookie("token", {
-        httpOnly: true,
-        secure: isProd,
-        sameSite: isProd ? "none" : "lax",
-      });
       return res.status(401).json({ message: "Akun tidak aktif atau tidak ditemukan, hubungi Lead/Admin" });
     }
 

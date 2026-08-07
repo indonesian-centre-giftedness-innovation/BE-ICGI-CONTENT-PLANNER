@@ -8,8 +8,6 @@ import { authMiddleware } from "../middleware/authMiddleware.js";
 
 export const authRouter = Router();
 
-const isProd = process.env.NODE_ENV === "production";
-
 authRouter.post("/login", async (req, res) => {
   const { email, password } = req.body ?? {};
 
@@ -33,27 +31,21 @@ authRouter.post("/login", async (req, res) => {
 
   const token = signToken({ userId: user.id, role: user.role });
 
-  res.cookie("token", token, {
-    httpOnly: true,
-    secure: isProd,
-    sameSite: isProd ? "none" : "lax",
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-  });
-
+  // Token dikirim langsung di body JSON (bukan Set-Cookie) — frontend simpan
+  // di localStorage dan kirim balik lewat header Authorization: Bearer.
+  // Ini menghindari masalah cookie lintas-domain yang sering diblokir Safari/iOS.
   res.json({
     id: user.id,
     name: user.name,
     email: user.email,
     role: user.role,
+    token,
   });
 });
 
 authRouter.post("/logout", (_req, res) => {
-  res.clearCookie("token", {
-    httpOnly: true,
-    secure: isProd,
-    sameSite: isProd ? "none" : "lax",
-  });
+  // Tidak ada cookie yang perlu dihapus di server — logout sepenuhnya
+  // ditangani di sisi client dengan menghapus token dari localStorage.
   res.json({ message: "Berhasil logout" });
 });
 
